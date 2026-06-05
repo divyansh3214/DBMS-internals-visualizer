@@ -1375,6 +1375,27 @@ function startSimulationLoop() {
   tickSim();
 }
 
+// Helper to get a random key from the uploaded database records
+function getRandomUploadedKey() {
+  if (!uploadedDataStats || !MOCK_DATABASE) return null;
+  const primaryTable = uploadedDataStats.primaryTable;
+  const primaryRows = MOCK_DATABASE[primaryTable];
+  if (!primaryRows || primaryRows.length === 0) return null;
+  
+  // Pick a random row
+  const randomRow = primaryRows[Math.floor(Math.random() * primaryRows.length)];
+  
+  // Find key column
+  const primaryCols = Object.keys(randomRow);
+  const keyCol = primaryCols.find(col => {
+    return primaryRows.some(row => typeof row[col] === 'number');
+  }) || primaryCols[0];
+  
+  let key = parseInt(randomRow[keyCol], 10);
+  if (isNaN(key)) return null;
+  return key;
+}
+
 // 1. Default standard workload
 function runRandomWorkload() {
   // Guard: skip entirely if no data is loaded
@@ -1402,20 +1423,22 @@ function runRandomWorkload() {
       bufferSweepLog.scrollTop = bufferSweepLog.scrollHeight;
     }
   } else if (roll < 0.7) {
-    // B+ Tree insertion — use keys from uploaded data range
-    const maxKey = uploadedDataStats.primaryRowsCount || 100;
-    const key = Math.floor(Math.random() * maxKey) + 1;
-    btree.insert(key, `val_${key}`);
-    logConsole('BG ENGINE', `Auto-inserted key ${key} to B+ Tree index.`, 'engine');
+    // B+ Tree insertion — use actual keys from uploaded data
+    const key = getRandomUploadedKey();
+    if (key !== null) {
+      btree.insert(key, `val_${key}`);
+      logConsole('BG ENGINE', `Auto-inserted key ${key} from database to B+ Tree index.`, 'engine');
+    }
   } else {
-    // Shard insert — use data from uploaded records
-    const maxKey = uploadedDataStats.primaryRowsCount || 100;
-    const key = Math.floor(Math.random() * maxKey) + 1;
-    const cqrsRecords = Object.values(cqrs.writeDB);
-    const randomRecord = cqrsRecords.length > 0 ? cqrsRecords[Math.floor(Math.random() * cqrsRecords.length)] : null;
-    const name = randomRecord ? (randomRecord.username || randomRecord.name || `rec_${key}`) : `rec_${key}`;
-    sharding.insert(key, name);
-    sharding.shards[Object.keys(sharding.shards)[key % 3]].queries++;
+    // Shard insert — use actual keys from uploaded records
+    const key = getRandomUploadedKey();
+    if (key !== null) {
+      const cqrsRecords = Object.values(cqrs.writeDB);
+      const randomRecord = cqrsRecords.length > 0 ? cqrsRecords[Math.floor(Math.random() * cqrsRecords.length)] : null;
+      const name = randomRecord ? (randomRecord.username || randomRecord.name || `rec_${key}`) : `rec_${key}`;
+      sharding.insert(key, name);
+      sharding.shards[Object.keys(sharding.shards)[key % 3]].queries++;
+    }
   }
 }
 
@@ -1441,8 +1464,9 @@ function runShardingWorkload() {
   // Guard: skip if no data is loaded
   if (!uploadedDataStats) return;
   
-  const maxKey = uploadedDataStats.primaryRowsCount || 100;
-  const key = Math.floor(Math.random() * maxKey) + 1;
+  const key = getRandomUploadedKey();
+  if (key === null) return;
+  
   const cqrsRecords = Object.values(cqrs.writeDB);
   const randomRecord = cqrsRecords.length > 0 ? cqrsRecords[Math.floor(Math.random() * cqrsRecords.length)] : null;
   const val = randomRecord ? (randomRecord.username || randomRecord.name || `value_${key}`) : `value_${key}`;
