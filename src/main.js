@@ -1054,6 +1054,7 @@ btnCqrsCommand.addEventListener('click', () => {
   cqrsPipelineLog.innerHTML = steps.map(s => `>> ${s}`).join('<br>') + '<br>';
   if (success) {
     logConsole('COMMAND GATEWAY', `Write Command committed: user ${userId}.${field} = "${event.newValue}"`, 'cqrs');
+    updateGlobalMockDatabase(userId, field, event.newValue);
     renderCqrsFlow();
   } else {
     logConsole('COMMAND GATEWAY', `Command failed: validation error on user ${userId}.${field}`, 'cqrs');
@@ -1396,6 +1397,27 @@ function getRandomUploadedKey() {
   return key;
 }
 
+// Helper to update the global mock database record on write commands
+function updateGlobalMockDatabase(userId, field, newValue) {
+  if (!uploadedDataStats || !MOCK_DATABASE) return;
+  const primaryTable = uploadedDataStats.primaryTable;
+  const primaryRows = MOCK_DATABASE[primaryTable];
+  if (!primaryRows) return;
+  
+  // Find the row by ID
+  const row = primaryRows.find(r => {
+    const primaryCols = Object.keys(r);
+    const keyCol = primaryCols.find(col => {
+      return primaryRows.some(row => typeof row[col] === 'number');
+    }) || primaryCols[0];
+    return String(r[keyCol]) === String(userId);
+  });
+  
+  if (row) {
+    row[field] = newValue;
+  }
+}
+
 // 1. Default standard workload
 function runRandomWorkload() {
   // Guard: skip entirely if no data is loaded
@@ -1526,6 +1548,10 @@ function runCqrsWorkload() {
   // 1. Dispatch update command
   const cmd = cqrs.executeCommand(user, field, newValue);
   cqrsPipelineLog.innerHTML = cmd.steps.map(s => `>> ${s}`).join('<br>') + '<br>';
+  
+  if (cmd.success) {
+    updateGlobalMockDatabase(user, field, cmd.event.newValue);
+  }
   
   // 2. Query Read model immediately (shows consistency lag)
   setTimeout(() => {
