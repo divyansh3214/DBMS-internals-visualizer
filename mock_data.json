@@ -1,0 +1,8 @@
+[
+  { "id": 101, "name": "Neo", "role": "The One", "status": "Active", "level": 99 },
+  { "id": 102, "name": "Trinity", "role": "First Mate", "status": "Active", "level": 95 },
+  { "id": 103, "name": "Morpheus", "role": "Captain", "status": "Active", "level": 90 },
+  { "id": 104, "name": "Agent Smith", "role": "Program", "status": "Offline", "level": 100 },
+  { "id": 105, "name": "Cypher", "role": "Crew", "status": "Offline", "level": 40 },
+  { "id": 106, "name": "Oracle", "role": "Program", "status": "Active", "level": 85 }
+]

@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="NEXUS DBMS - Real-time Database Management System Internal Simulator. Visualizing optimizer trees, B+ Trees, lock managers, page caches, sharding clusters, and CQRS systems." />
+    <title>NEXUS // DBMS Engine Simulator</title>
+  </head>
+  <body>
+    <div id="bg-particles" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:-1;pointer-events:none;"></div>
+    <!-- HEADER Telemetry Dashboard -->
+    <header>
+      <div class="brand">
+        <div class="status-indicator">
+          <div class="status-dot" id="db-status-dot" style="background:#ff9f1c; box-shadow:0 0 10px #ff9f1c;"></div>
+          <span id="db-status-text">Awaiting DB Upload</span>
+        </div>
+        <h1>NEXUS // DBMS ENGINE</h1>
+      </div>
+      
+      <div class="telemetry-grid">
+        <div class="telemetry-item">
+          <span class="telemetry-label">TPS Rate</span>
+          <span class="telemetry-value" id="tps-rate">0.0</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">Cache Hit Ratio</span>
+          <span class="telemetry-value" id="cache-hit-ratio">100%</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">Lock Conflicts</span>
+          <span class="telemetry-value" id="lock-conflicts">0%</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">Cluster Balance</span>
+          <span class="telemetry-value" id="cluster-balance">OPTIMAL</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <div class="main-container">
+      <!-- SIDEBAR Simulation Controls -->
+      <aside class="sidebar">
+        <div class="control-group">
+          <h2 class="section-title">Simulator Control</h2>
+          <button class="btn btn-primary" id="btn-toggle-play">
+            <span id="play-icon">■</span> <span id="play-text">Pause Engine</span>
+          </button>
+          
+          <div class="slider-container">
+            <div class="slider-labels">
+              <span>Sim Speed</span>
+              <span id="speed-val">1x</span>
+            </div>
+            <input type="range" id="speed-slider" min="1" max="5" value="2" />
+          </div>
+          
+          <button class="btn btn-danger" id="btn-reset-engine">Reset Simulator</button>
+        </div>
+
+        <div class="control-group">
+          <h2 class="section-title">Custom Database Upload</h2>
+          <div class="upload-zone" id="db-upload-zone">
+            <input type="file" id="db-file-input" accept=".sql,.json,.csv" hidden />
+            <div class="upload-icon">☁️</div>
+            <div class="upload-text">Drag & Drop SQL/JSON/CSV</div>
+            <button class="btn btn-primary" style="margin-top: 8px; font-size: 0.7rem;" id="btn-browse-file">Browse File</button>
+          </div>
+          <div id="upload-status" style="font-size: 0.7rem; color: var(--accent-orange); margin-top: 8px; text-align: center;">Awaiting database file upload...</div>
+          <div id="schema-preview" class="schema-preview" style="display: none;"></div>
+        </div>
+
+        <div class="control-group" style="flex: 1;">
+          <h2 class="section-title">Preset Scenarios</h2>
+          <button class="scenario-card active" id="scenario-default">
+            <div class="scenario-name">Standard Random Run</div>
+            <div class="scenario-desc">Simulates mixed workloads: inserts, searches, buffer requests, and lock transactions.</div>
+          </button>
+          
+          <button class="scenario-card" id="scenario-btree">
+            <div class="scenario-name">B+ Tree Split & Merge</div>
+            <div class="scenario-desc">Sequentially inserts keys to trigger leaf & internal splits, followed by merges.</div>
+          </button>
+          
+          <button class="scenario-card" id="scenario-deadlock">
+            <div class="scenario-name">Concurrency Deadlock</div>
+            <div class="scenario-desc">Spawns circular S/X lock requests to force Wait-For cycles and trigger rollback resolution.</div>
+          </button>
+
+          <button class="scenario-card" id="scenario-eviction">
+            <div class="scenario-name">Cache replacement</div>
+            <div class="scenario-desc">Triggers rapid index queries on varying ranges to showcase cache hits vs evictions.</div>
+          </button>
+
+          <button class="scenario-card" id="scenario-sharding">
+            <div class="scenario-name">Shard Balancing</div>
+            <div class="scenario-desc">Distributes random inserts using range vs. hash mapping to observe query balance.</div>
+          </button>
+
+          <button class="scenario-card" id="scenario-cqrs">
+            <div class="scenario-name">CQRS Eventual Sync</div>
+            <div class="scenario-desc">Executes writes and fast reads in succession to simulate eventual consistency gaps.</div>
+          </button>
+
+          <button class="scenario-card" id="scenario-replication">
+            <div class="scenario-name">Replication Failover</div>
+            <div class="scenario-desc">Simulates master-slave WAL streaming, slave promotion, and multi-primary write conflicts.</div>
+          </button>
+
+          <button class="scenario-card" id="scenario-overview">
+            <div class="scenario-name">Full System Architecture</div>
+            <div class="scenario-desc">Animated overview of all subsystems working in concert on one big database.</div>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Central Window -->
+      <main class="workspace">
+        <!-- Navigation Tabs -->
+        <nav class="tabs-bar" id="tabs-navigation">
+          <button class="tab-btn active" data-tab="tab-query">Query Plan</button>
+          <button class="tab-btn" data-tab="tab-btree">B+ Tree Index</button>
+          <button class="tab-btn" data-tab="tab-locks">Transactions & WAL</button>
+          <button class="tab-btn" data-tab="tab-buffer">Page Buffer</button>
+          <button class="tab-btn" data-tab="tab-sharding">Sharding Node</button>
+          <button class="tab-btn" data-tab="tab-cqrs">CQRS Event Flow</button>
+          <button class="tab-btn" data-tab="tab-replication">Replication</button>
+          <button class="tab-btn" data-tab="tab-overview">System Overview</button>
+        </nav>
+
+        <!-- TAB CONTENT: QUERY OPTIMIZATION -->
+        <section class="tab-content active" id="tab-query">
+          <div class="visualizer-container">
+            <div class="visualizer-canvas-panel" id="query-plan-canvas-panel">
+              <!-- Animated canvas or HTML diagram for query plans -->
+              <div class="three-container" id="queryplan-3d"></div>
+            </div>
+            
+            <div class="visualizer-info-panel">
+              <div class="sql-console">
+                <h3 class="section-title" style="border:none; margin:0;">SQL Input Optimizer</h3>
+                <textarea class="code-textarea" id="sql-input" placeholder="Upload a database file first, then your SQL query will appear here..."></textarea>
+                <div style="display:flex; gap:10px;">
+                  <button class="btn btn-primary" id="btn-explain-query" style="flex:1;">Explain AST</button>
+                  <button class="btn" id="btn-run-query" style="flex:1;">Execute Plan</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                  <input type="checkbox" id="check-use-index" />
+                  <label for="check-use-index" style="font-size:0.75rem; color:var(--text-secondary); cursor:pointer;">Use Index Scan on amount</label>
+                </div>
+              </div>
+              
+              <div class="control-group">
+                <h3 class="section-title">Connection Pool Grid</h3>
+                <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+                  <div style="font-size:0.75rem; font-family:var(--font-mono); margin-bottom:8px; display:flex; justify-content:space-between;">
+                    <span>Active connections:</span>
+                    <span id="active-conn-count" style="color:var(--accent-green)">0/4</span>
+                  </div>
+                  <div id="conn-pool-visual-list" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+                  <div style="font-size:0.75rem; font-family:var(--font-mono); margin-top:10px; border-top:1px solid var(--border-color); padding-top:8px;">
+                    <span>Queue:</span> <span id="conn-queue-count" style="color:var(--accent-orange)">0 waiting</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="control-group">
+                <h3 class="section-title">Query Cache</h3>
+                <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-size:0.75rem; font-family:var(--font-mono);">Cached Entries: <span id="cache-entries-count" style="color:var(--accent-cyan)">0</span></span>
+                  <button class="btn" id="btn-clear-cache" style="font-size:0.65rem; padding:4px 8px;">Clear Cache</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB CONTENT: B+ TREE INDEX -->
+        <section class="tab-content" id="tab-btree">
+          <div class="visualizer-container">
+            <div class="visualizer-canvas-panel">
+              <div class="three-container" id="btree-3d"></div>
+            </div>
+            
+            <div class="visualizer-info-panel">
+              <div class="control-group">
+                <h3 class="section-title">Tree Operations</h3>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                  <input type="number" id="btree-input-key" placeholder="Key (e.g. 24)" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px; border-radius:4px; font-family:var(--font-mono); font-size:0.8rem;" />
+                  <button class="btn btn-primary" id="btn-btree-insert">Insert</button>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:8px;">
+                  <button class="btn" id="btn-btree-search" style="flex:1;">Search</button>
+                  <button class="btn btn-danger" id="btn-btree-delete" style="flex:1;">Delete</button>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Engine Specs</h3>
+                <table class="data-table">
+                  <tr>
+                    <th>B+ Tree Order</th>
+                    <td>3 (Max 2 keys/node)</td>
+                  </tr>
+                  <tr>
+                    <th>Page Capacity</th>
+                    <td>Splits immediately at 3 keys</td>
+                  </tr>
+                  <tr>
+                    <th>Pointer Links</th>
+                    <td>Linked list leaf nodes pointers</td>
+                  </tr>
+                </table>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Traversal Trace</h3>
+                <div id="btree-trace-output" style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; padding:10px; max-height:160px; overflow-y:auto; font-family:var(--font-mono); font-size:0.7rem; color:var(--text-secondary); line-height:1.4;">
+                  Awaiting insertion/search operations...
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB CONTENT: CONCURRENCY & WAL -->
+        <section class="tab-content" id="tab-locks">
+          <div class="visualizer-container">
+            <div class="visualizer-canvas-panel">
+              <canvas class="canvas-element" id="lock-canvas"></canvas>
+            </div>
+            
+            <div class="visualizer-info-panel">
+              <div class="control-group">
+                <h3 class="section-title">Interactive Locks Table</h3>
+                <table class="data-table" id="lock-table-grid">
+                  <thead>
+                    <tr>
+                      <th>Resource</th>
+                      <th>Lock Type</th>
+                      <th>Holders</th>
+                      <th>Waiters</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>A</td><td>-</td><td>-</td><td>-</td></tr>
+                    <tr><td>B</td><td>-</td><td>-</td><td>-</td></tr>
+                    <tr><td>C</td><td>-</td><td>-</td><td>-</td></tr>
+                    <tr><td>D</td><td>-</td><td>-</td><td>-</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="control-group" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+                <h3 class="section-title">Write-Ahead Log (WAL)</h3>
+                <div id="wal-log-list" style="background:rgba(5,7,12,0.8); border:1px solid var(--border-color); border-radius:6px; padding:10px; flex:1; overflow-y:auto; font-family:var(--font-mono); font-size:0.7rem; display:flex; flex-direction:column; gap:4px; max-height:220px;">
+                  <div style="color:var(--text-muted); text-align:center;">--- WAL EMULATION START ---</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB CONTENT: BUFFER POOL PAGE CACHE -->
+        <section class="tab-content" id="tab-buffer">
+          <div class="visualizer-container">
+            <div class="visualizer-canvas-panel" style="flex-direction:column; justify-content:flex-start; padding:20px;">
+              <h3 class="section-title" style="width:100%; border:none; text-align:left;">16-Frame Buffer Pool Cache Slots</h3>
+              <div class="buffer-grid" id="buffer-pool-grid"></div>
+            </div>
+            
+            <div class="visualizer-info-panel">
+              <div class="control-group">
+                <h3 class="section-title">Replacement Policy</h3>
+                <div style="display:flex; gap:10px;">
+                  <button class="btn btn-primary" id="policy-clock" style="flex:1;">Clock Sweep</button>
+                  <button class="btn" id="policy-lru" style="flex:1;">LRU</button>
+                  <button class="btn" id="policy-fifo" style="flex:1;">FIFO</button>
+                </div>
+                <div id="active-policy-label" style="font-size:0.75rem; font-family:var(--font-mono); text-align:center; margin-top:8px; color:var(--accent-cyan);">
+                  Active Policy: CLOCK SWEEP
+                </div>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Disk Mapping</h3>
+                <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+                  <div style="font-size:0.7rem; font-family:var(--font-mono); line-height:1.4; color:var(--text-secondary);">
+                    - Disk contains <strong>Pages 1–32</strong>.<br>
+                    - Write operations flag frame as <strong>DIRTY</strong>.<br>
+                    - Eviction of dirty page forces disk sync (flushing blocks).
+                  </div>
+                </div>
+              </div>
+              
+              <div class="control-group">
+                <h3 class="section-title">Buffer Sweeper Log</h3>
+                <div id="buffer-sweep-log" style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; padding:10px; max-height:140px; overflow-y:auto; font-family:var(--font-mono); font-size:0.7rem; color:var(--text-secondary); line-height:1.4;">
+                  Awaiting page cache access requests...
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB CONTENT: DATA PARTITIONING & SHARDING -->
+        <section class="tab-content" id="tab-sharding">
+          <div class="visualizer-container">
+            <div class="visualizer-canvas-panel" style="position: relative; padding: 0;">
+              <div class="three-container" id="sharding-3d"></div>
+              <div class="shard-nodes-container" id="shards-nodes-wrapper" style="position: absolute; bottom: 0px; left: 15px; right: 15px; z-index: 10; pointer-events: auto; height: auto;"></div>
+            </div>
+            
+            <div class="visualizer-info-panel">
+              <div class="control-group">
+                <h3 class="section-title">Sharding Strategy</h3>
+                <div style="display:flex; gap:10px;">
+                  <button class="btn btn-primary" id="shard-strategy-range" style="flex:1;">Range Partitioning</button>
+                  <button class="btn" id="shard-strategy-hash" style="flex:1;">Hash Partitioning</button>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Insert Record to Cluster</h3>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                  <input type="number" id="shard-insert-key" placeholder="Key (e.g. 52)" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px; border-radius:4px; font-family:var(--font-mono); font-size:0.8rem;" />
+                  <input type="text" id="shard-insert-val" placeholder="Value (e.g. Smith)" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px; border-radius:4px; font-family:var(--font-mono); font-size:0.8rem;" />
+                </div>
+                <button class="btn btn-primary" id="btn-shard-insert" style="width:100%; margin-top:8px;">Route Insert</button>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Proxy Routing Steps</h3>
+                <div id="sharding-routing-log" style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; padding:10px; max-height:160px; overflow-y:auto; font-family:var(--font-mono); font-size:0.7rem; color:var(--text-secondary); line-height:1.4;">
+                  Awaiting write/read requests to the database cluster router...
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB CONTENT: CQRS ARCHITECTURE -->
+        <section class="tab-content" id="tab-cqrs">
+          <div class="visualizer-container">
+            <div class="visualizer-canvas-panel" style="padding:20px; justify-content:center; align-items:center;">
+              <div class="cqrs-flow-wrapper" id="cqrs-system-flow"></div>
+            </div>
+            
+            <div class="visualizer-info-panel">
+              <div class="control-group">
+                <h3 class="section-title">Write Model (Command)</h3>
+                <div style="display:grid; grid-template-columns: 1fr; gap:6px;">
+                  <label style="font-size:0.7rem; color:var(--text-secondary);">Select Target User ID:</label>
+                  <select id="cqrs-command-userid" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px; border-radius:4px; font-family:var(--font-mono); font-size:0.8rem;">
+                    <option value="" disabled selected>Upload data first</option>
+                  </select>
+                  <label style="font-size:0.7rem; color:var(--text-secondary); margin-top:4px;">Change Field:</label>
+                  <select id="cqrs-command-field" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px; border-radius:4px; font-family:var(--font-mono); font-size:0.8rem;">
+                    <option value="" disabled selected>Upload data first</option>
+                  </select>
+                  <input type="text" id="cqrs-command-val" placeholder="New Value (e.g. Active or 99)" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px; border-radius:4px; font-family:var(--font-mono); font-size:0.8rem; margin-top:4px;" />
+                  <button class="btn btn-primary" id="btn-cqrs-command" style="margin-top:4px;">Dispatch Command</button>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Read Model (Query)</h3>
+                <button class="btn" id="btn-cqrs-query" style="width:100%;">Query Read DB (GetUserStatus)</button>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Sync Latency (Delay)</h3>
+                <div class="slider-container">
+                  <div class="slider-labels">
+                    <span>Lag Time</span>
+                    <span id="cqrs-lag-val">1500ms</span>
+                  </div>
+                  <input type="range" id="cqrs-lag-slider" min="500" max="6000" step="500" value="1500" />
+                </div>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Pipeline Logs</h3>
+                <div id="cqrs-pipeline-log" style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; padding:10px; max-height:160px; overflow-y:auto; font-family:var(--font-mono); font-size:0.7rem; color:var(--text-secondary); line-height:1.4;">
+                  Awaiting actions...
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB CONTENT: REPLICATION TOPOLOGY -->
+        <section class="tab-content" id="tab-replication">
+          <div class="visualizer-container">
+            <div class="visualizer-canvas-panel">
+              <div class="three-container" id="replication-3d"></div>
+            </div>
+            
+            <div class="visualizer-info-panel">
+              <div class="control-group">
+                <h3 class="section-title">Replication Mode</h3>
+                <div style="display:flex; gap:10px;">
+                  <button class="btn btn-primary" id="repl-mode-ms" style="flex:1;">Master-Slave</button>
+                  <button class="btn" id="repl-mode-mp" style="flex:1;">Multi-Primary</button>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Write Operation</h3>
+                <div style="display:grid; grid-template-columns: 1fr; gap:6px;">
+                  <select id="repl-write-node" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px; border-radius:4px; font-family:var(--font-mono); font-size:0.8rem;">
+                    <option value="auto">Auto (Master)</option>
+                  </select>
+                  <select id="repl-write-record" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px; border-radius:4px; font-family:var(--font-mono); font-size:0.8rem;">
+                    <option value="" disabled selected>Upload data first</option>
+                  </select>
+                  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+                    <select id="repl-write-field" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px; border-radius:4px; font-family:var(--font-mono); font-size:0.75rem;">
+                      <option value="" disabled selected>Upload data first</option>
+                    </select>
+                    <input type="text" id="repl-write-value" placeholder="New Value" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px; border-radius:4px; font-family:var(--font-mono); font-size:0.75rem;" />
+                  </div>
+                  <button class="btn btn-primary" id="btn-repl-write">Execute Write</button>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Read Operation</h3>
+                <div style="display:flex; gap:10px;">
+                  <button class="btn" id="btn-repl-read" style="flex:1;">Read (Load Balanced)</button>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Node Management</h3>
+                <div id="repl-node-toggles" style="display:flex; flex-direction:column; gap:6px;"></div>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Cluster Auto-Scaling</h3>
+                <div style="display:flex; gap:10px;">
+                  <button class="btn btn-primary" id="btn-scale-out" style="flex:1;">Scale Out (+ Replica)</button>
+                  <button class="btn btn-danger" id="btn-scale-in" style="flex:1;">Scale In (- Replica)</button>
+                </div>
+                <div style="font-size:0.65rem; color:var(--text-secondary); margin-top:6px; text-align:center;" id="scale-info-text">
+                  Current: 4 nodes
+                </div>
+              </div>
+
+              <div class="control-group">
+                <h3 class="section-title">Replication Lag</h3>
+                <div class="slider-container">
+                  <div class="slider-labels">
+                    <span>Base Lag</span>
+                    <span id="repl-lag-val">800ms</span>
+                  </div>
+                  <input type="range" id="repl-lag-slider" min="200" max="5000" step="200" value="800" />
+                </div>
+              </div>
+
+              <div class="control-group" style="flex:1;">
+                <h3 class="section-title">Replication WAL Stream</h3>
+                <div id="repl-wal-log" class="repl-wal-stream">
+                  <div style="color:var(--text-muted); text-align:center;">--- WAL Stream ---</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB CONTENT: SYSTEM OVERVIEW -->
+        <section class="tab-content" id="tab-overview">
+          <div style="display:flex; flex-direction:column; gap:20px; height:100%;">
+            <!-- Stats Ribbon -->
+            <div class="overview-stats-ribbon" id="overview-stats-ribbon"></div>
+            
+            <!-- Architecture Canvas -->
+            <div class="visualizer-canvas-panel" style="flex:1; min-height:420px;">
+              <div class="three-container" id="overview-3d"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Scrolling Log console (Bottom Footer) -->
+    <footer class="console-panel">
+      <div class="console-header">
+        <span class="console-title">>_ System Event Log Console</span>
+        <button class="console-clear-btn" id="btn-clear-console">Clear Console</button>
+      </div>
+      <div class="console-logs-wrapper" id="console-logs-box">
+        <div class="log-entry">
+          <span class="log-time">[13:55:00]</span>
+          <span class="log-text log-tag-engine">[SYSTEM] NEXUS Engine Bootloader... Initialized. All subsystems ready.</span>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
