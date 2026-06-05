@@ -16,12 +16,23 @@ export class CqrsManager {
       customRows.forEach((row, i) => {
         const id = String(row.id || row.user_id || row.order_id || `rec_${i + 1}`);
         const username = String(row.username || row.name || row.title || `user_${id}`);
-        const level = row.level !== undefined ? row.level : (row.age !== undefined ? row.age : (row.amount !== undefined ? row.amount : 10));
-        const status = String(row.status || row.role || 'Active');
-        this.writeDB[id] = { id, username, level, status };
+        
+        // Preserve all original columns of the row dynamically
+        const record = { ...row };
+        record.id = id;
+        record.username = username;
+        
+        this.writeDB[id] = record;
       });
     } else {
-      this.writeDB = {};
+      // Pre-seed with mock users when no database file is uploaded
+      this.writeDB = {
+        "101": { id: "101", username: "Neo", level: 99, status: "Active" },
+        "102": { id: "102", username: "Trinity", level: 95, status: "Active" },
+        "103": { id: "103", username: "Morpheus", level: 90, status: "Active" },
+        "104": { id: "104", username: "Agent Smith", level: 100, status: "Offline" },
+        "105": { id: "105", username: "Cypher", level: 40, status: "Offline" }
+      };
     }
 
     // Deep copy to read DB initially
