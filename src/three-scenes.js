@@ -17,13 +17,29 @@ const C = {
 function makeRenderer(container, opts = {}) {
   const w = container.clientWidth || 600;
   const h = container.clientHeight || 400;
-  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-  r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  r.setSize(w, h);
-  r.setClearColor(0x000000, 0);
-  container.appendChild(r.domElement);
-  r.domElement.style.borderRadius = '8px';
-  return r;
+  try {
+    const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    r.setSize(w, h);
+    r.setClearColor(0x000000, 0);
+    container.appendChild(r.domElement);
+    r.domElement.style.borderRadius = '8px';
+    return r;
+  } catch (err) {
+    console.error("WebGL context creation failed:", err);
+    container.innerHTML = `
+      <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; min-height:300px; color:var(--accent-orange); font-family:var(--font-mono); font-size:0.8rem; text-align:center; padding:20px; background:rgba(13,18,31,0.65); border:1px solid rgba(255,159,28,0.25); border-radius:8px; backdrop-filter:blur(8px);">
+        <span style="font-size:1.1rem; font-weight:bold; margin-bottom:8px; color:var(--accent-orange);">⚠️ WebGL Context Exhausted</span>
+        <span style="color:var(--text-secondary); line-height:1.4;">Vite Hot-Reload has accumulated too many WebGL contexts in browser memory.</span>
+        <span style="margin-top:10px; padding:6px 12px; background:rgba(255,159,28,0.1); border:1px solid rgba(255,159,28,0.3); border-radius:4px; color:var(--accent-orange); font-weight:bold;">Please refresh your browser tab to restore 3D scenes.</span>
+      </div>
+    `;
+    return {
+      setSize: () => {},
+      render: () => {},
+      domElement: document.createElement('div')
+    };
+  }
 }
 
 function makeLabel(text, opts = {}) {
