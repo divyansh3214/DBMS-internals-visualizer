@@ -1480,3 +1480,142 @@ select:focus {
   75% { transform: translate(-8px, -3px); }
   100% { transform: translate(0, 0); }
 }
+
+/* ====================================================
+   RESPONSIVE DESIGN & MOBILE OPTIMIZATIONS
+   ==================================================== */
+
+/* Tablet & Smaller Laptops (< 1024px) */
+@media (max-width: 1024px) {
+  .main-container {
+    flex-direction: column;
+    overflow-y: auto;
+    height: calc(100vh - 70px);
+  }
+
+  .sidebar {
+    width: 100% !important;
+    height: auto !important;
+    order: 2;
+    border-right: none !important;
+    border-top: 1px solid var(--border-color);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3) !important;
+    overflow-y: visible !important;
+  }
+
+  .workspace {
+    order: 1;
+    flex: none;
+    height: auto;
+    overflow: visible;
+  }
+
+  .visualizer-container {
+    grid-template-columns: 1fr !important;
+    height: auto;
+    min-height: auto;
+    gap: 16px;
+  }
+
+  .three-container {
+    min-height: 340px;
+    height: 340px !important;
+  }
+
+  .visualizer-info-panel {
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
+}
+
+/* Mobile Devices (< 768px) */
+@media (max-width: 768px) {
+  header {
+    flex-direction: column !important;
+    gap: 12px;
+    align-items: center;
+    text-align: center;
+    padding: 12px 16px !important;
+  }
+
+  .telemetry-grid {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    justify-items: stretch;
+  }
+
+  .telemetry-item {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 6px;
+    border-radius: 4px;
+  }
+
+  .tabs-bar {
+    padding: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab-btn {
+    padding: 10px 14px;
+    font-size: 0.7rem;
+  }
+
+  .tab-content {
+    padding: 12px;
+  }
+
+  .console-panel {
+    max-height: 180px;
+  }
+
+  .cqrs-architecture-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Sharding node cards responsive wrap */
+  #shards-nodes-wrapper {
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    pointer-events: auto !important;
+    z-index: 10 !important;
+    padding: 12px !important;
+    gap: 12px !important;
+  }
+
+  .shard-node-card {
+    min-width: 140px !important;
+    max-width: 100% !important;
+    width: calc(50% - 6px) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
+  }
+}
+
+/* Small Mobile Screens (< 480px) */
+@media (max-width: 480px) {
+  .telemetry-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shard-node-card {
+    min-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .data-table th, .data-table td {
+    padding: 6px 8px;
+    font-size: 0.65rem;
+  }
+}
