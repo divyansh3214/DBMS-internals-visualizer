@@ -47,6 +47,7 @@ let currentScenario = 'default';
 let activeTab = 'tab-query';
 let activeBufferPolicy = 'Clock';
 let uploadedDataStats = null; // Stores the stats from the last uploaded file
+let uploadedFileName = 'database.json';
 
 // ----------------------------------------------------
 // DOM ELEMENTS REFERENCE
@@ -123,6 +124,7 @@ const cqrsCommandUserId = document.getElementById('cqrs-command-userid');
 const cqrsCommandField = document.getElementById('cqrs-command-field');
 const cqrsCommandVal = document.getElementById('cqrs-command-val');
 const btnCqrsCommand = document.getElementById('btn-cqrs-command');
+const btnCqrsDownload = document.getElementById('btn-cqrs-download');
 const btnCqrsQuery = document.getElementById('btn-cqrs-query');
 const cqrsLagSlider = document.getElementById('cqrs-lag-slider');
 const cqrsLagVal = document.getElementById('cqrs-lag-val');
@@ -1061,6 +1063,27 @@ btnCqrsCommand.addEventListener('click', () => {
   }
 });
 
+btnCqrsDownload.addEventListener('click', () => {
+  if (!checkUploaded('Download Database')) return;
+  
+  const jsonStr = JSON.stringify(MOCK_DATABASE, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  
+  const a = document.createElement('a');
+  a.href = url;
+  
+  const baseName = uploadedFileName.split('.').slice(0, -1).join('.') || 'database';
+  a.download = `updated_${baseName}.json`;
+  
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  logConsole('SYSTEM', `Successfully downloaded updated database file copy: updated_${baseName}.json`, 'engine');
+});
+
 btnCqrsQuery.addEventListener('click', () => {
   if (!checkUploaded('CQRS Read Query')) return;
   const userId = cqrsCommandUserId.value;
@@ -1790,6 +1813,7 @@ function handleFileUpload(file) {
       
       if (stats) {
         uploadedDataStats = stats; // Store for reset
+        uploadedFileName = file.name; // Save filename
         dbStatusDot.style.background = '#39ff14';
         dbStatusDot.style.boxShadow = '0 0 10px #39ff14';
         dbStatusText.textContent = `Online // ${file.name}`;
