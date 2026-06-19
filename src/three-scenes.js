@@ -24,6 +24,14 @@ function makeRenderer(container, opts = {}) {
     r.setClearColor(0x000000, 0);
     container.appendChild(r.domElement);
     r.domElement.style.borderRadius = '8px';
+    // Handle WebGL context loss gracefully
+    r.domElement.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      console.warn('[DBMS] WebGL context lost on', container.id || 'canvas', '— will attempt restore');
+    });
+    r.domElement.addEventListener('webglcontextrestored', () => {
+      console.info('[DBMS] WebGL context restored on', container.id || 'canvas');
+    });
     return r;
   } catch (err) {
     console.error("WebGL context creation failed:", err);
@@ -168,6 +176,49 @@ export function initBTreeScene(container) {
   const gridHelper = new THREE.GridHelper(30, 30, 0x0a1628, 0x0a1628);
   gridHelper.position.y = -4;
   btreeState.scene.add(gridHelper);
+
+  // Raycasting for hover detection on B+ tree nodes
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  let hoveredNodeData = null;
+
+  function onMouseMove(event) {
+    const rect = container.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, btreeState.camera);
+    const intersects = raycaster.intersectObjects(btreeState.group.children, true);
+    
+    let foundNode = null;
+    if (intersects.length > 0) {
+      for (const hit of intersects) {
+        // Walk up to find a group with btreeNodeRef
+        let obj = hit.object;
+        while (obj && !obj.userData.btreeNodeRef) {
+          obj = obj.parent;
+        }
+        if (obj && obj.userData.btreeNodeRef) {
+          foundNode = obj.userData.btreeNodeRef;
+          break;
+        }
+      }
+    }
+
+    if (foundNode !== hoveredNodeData) {
+      hoveredNodeData = foundNode;
+      const customEvent = new CustomEvent('btree-hover', { 
+        detail: { 
+          node: foundNode,
+          mouseX: event.clientX,
+          mouseY: event.clientY
+        } 
+      });
+      container.dispatchEvent(customEvent);
+    }
+  }
+
+  container.addEventListener('mousemove', onMouseMove);
 }
 
 export function updateBTree(root) {
@@ -217,14 +268,18 @@ export function updateBTree(root) {
       const fillColor = C.nodeFill;
       const box = glowBox(boxW, 0.8, 0.5, fillColor, edgeColor);
       box.position.set(pos.x, pos.y, pos.z);
+      // Store reference to the B+ tree node data for raycasting hover lookup
+      box.userData.btreeNodeRef = node;
       btreeState.group.add(box);
       // Key label
       const label = makeLabel(keysStr, { color: isLeaf ? '#ff007f' : '#00f2fe', fontSize: 18, scale: 0.8 });
       label.position.set(pos.x, pos.y, pos.z + 0.5);
+      label.userData.btreeNodeRef = node;
       btreeState.group.add(label);
       // Type label
       const typeLabel = makeLabel(isLeaf ? 'LEAF' : 'INTERNAL', { color: '#57606a', fontSize: 12, scale: 0.5 });
       typeLabel.position.set(pos.x, pos.y - 0.6, pos.z + 0.3);
+      typeLabel.userData.btreeNodeRef = node;
       btreeState.group.add(typeLabel);
       // Connections to children
       if (!node.isLeaf && node.children) {

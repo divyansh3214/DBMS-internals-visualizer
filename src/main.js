@@ -922,8 +922,23 @@ btnBtreeInsert.addEventListener('click', () => {
   const key = parseInt(btreeInputKey.value);
   if (isNaN(key)) return;
   
+  // Try to find the full record from the database for this key
+  let recordValue = { id: key };
+  if (uploadedDataStats && MOCK_DATABASE) {
+    const primaryTable = uploadedDataStats.primaryTable;
+    const primaryRows = MOCK_DATABASE[primaryTable];
+    if (primaryRows) {
+      const matchRow = primaryRows.find(r => {
+        const cols = Object.keys(r);
+        const kCol = cols.find(c => primaryRows.some(row => typeof row[c] === 'number')) || cols[0];
+        return parseInt(r[kCol], 10) === key;
+      });
+      if (matchRow) recordValue = matchRow;
+    }
+  }
+  
   btreeTraceOutput.innerHTML = `Inserting key ${key}...<br>`;
-  const trace = btree.insert(key, `val_${key}`);
+  const trace = btree.insert(key, recordValue);
   animateBTreeTrace(trace);
   
   logConsole('INDEX MANAGER', `Inserting Key: ${key} to B+ Tree Index`, 'engine');
@@ -1004,7 +1019,16 @@ btnShardInsert.addEventListener('click', () => {
   const val = shardInsertVal.value;
   if (isNaN(key) || !val) return;
   
-  const result = sharding.insert(key, val);
+  const result = sharding.insert(key, val, uploadedDataStats ? (() => {
+    const pt = uploadedDataStats.primaryTable;
+    const rows = MOCK_DATABASE[pt];
+    if (!rows) return null;
+    return rows.find(r => {
+      const cols = Object.keys(r);
+      const kCol = cols.find(c => rows.some(row => typeof row[c] === 'number')) || cols[0];
+      return parseInt(r[kCol], 10) === key;
+    }) || null;
+  })() : null);
   const { target, steps, autoSharded, rebalanceLogs } = result;
   
   // Trigger 3D pulse
@@ -1390,7 +1414,8 @@ function startSimulationLoop() {
         logConsole('REPL SYNC', entry.msg, 'replication');
       });
       
-      renderActiveTabVisuals();
+      // Flag that visuals need refreshing (picked up by throttled renderer)
+      simNeedsRender = true;
     }
     
     simTimer = setTimeout(tickSim, speedMultiplier);
@@ -1471,7 +1496,19 @@ function runRandomWorkload() {
     // B+ Tree insertion — use actual keys from uploaded data
     const key = getRandomUploadedKey();
     if (key !== null) {
-      btree.insert(key, `val_${key}`);
+      // Fetch full record for this key from the database
+      let recordValue = { id: key };
+      const primaryTable = uploadedDataStats.primaryTable;
+      const primaryRows = MOCK_DATABASE[primaryTable];
+      if (primaryRows) {
+        const matchRow = primaryRows.find(r => {
+          const cols = Object.keys(r);
+          const kCol = cols.find(c => primaryRows.some(row => typeof row[c] === 'number')) || cols[0];
+          return parseInt(r[kCol], 10) === key;
+        });
+        if (matchRow) recordValue = matchRow;
+      }
+      btree.insert(key, recordValue);
       logConsole('BG ENGINE', `Auto-inserted key ${key} from database to B+ Tree index.`, 'engine');
     }
   } else {
@@ -1481,7 +1518,18 @@ function runRandomWorkload() {
       const cqrsRecords = Object.values(cqrs.writeDB);
       const randomRecord = cqrsRecords.length > 0 ? cqrsRecords[Math.floor(Math.random() * cqrsRecords.length)] : null;
       const name = randomRecord ? (randomRecord.username || randomRecord.name || `rec_${key}`) : `rec_${key}`;
-      sharding.insert(key, name);
+      // Find the full row from the database to pass to shard
+      const pt = uploadedDataStats.primaryTable;
+      const rows = MOCK_DATABASE[pt];
+      let fullRow = null;
+      if (rows) {
+        fullRow = rows.find(r => {
+          const cols = Object.keys(r);
+          const kCol = cols.find(c => rows.some(row => typeof row[c] === 'number')) || cols[0];
+          return parseInt(r[kCol], 10) === key;
+        }) || null;
+      }
+      sharding.insert(key, name, fullRow);
       sharding.shards[Object.keys(sharding.shards)[key % 3]].queries++;
     }
   }
@@ -1516,7 +1564,19 @@ function runShardingWorkload() {
   const randomRecord = cqrsRecords.length > 0 ? cqrsRecords[Math.floor(Math.random() * cqrsRecords.length)] : null;
   const val = randomRecord ? (randomRecord.username || randomRecord.name || `value_${key}`) : `value_${key}`;
   
-  const result = sharding.insert(key, val);
+  // Find the full row from the database
+  const pt = uploadedDataStats.primaryTable;
+  const rows = MOCK_DATABASE[pt];
+  let fullRow = null;
+  if (rows) {
+    fullRow = rows.find(r => {
+      const cols = Object.keys(r);
+      const kCol = cols.find(c => rows.some(row => typeof row[c] === 'number')) || cols[0];
+      return parseInt(r[kCol], 10) === key;
+    }) || null;
+  }
+  
+  const result = sharding.insert(key, val, fullRow);
   const { target, steps, autoSharded, rebalanceLogs } = result;
   
   if (sharding.shards[target].queries === undefined) {
@@ -1639,6 +1699,7 @@ function runReplicationWorkload() {
 }
 
 // Canvas animation ticking thread
+let simNeedsRender = false;
 function startVisualAnimationTick() {
   // Initialize Three.js 3D scenes
   if (bgParticles) initBackground(bgParticles);
@@ -1650,11 +1711,17 @@ function startVisualAnimationTick() {
   startAnimationLoop();
   setActiveScene('queryplan');
 
-  const drawTick = () => {
-    renderActiveTabVisuals();
-    requestAnimationFrame(drawTick);
-  };
-  requestAnimationFrame(drawTick);
+  // Initial render for the default tab
+  renderActiveTabVisuals();
+
+  // Throttled renderer: pick up simulation-driven dirty flags at ~4fps
+  // (Three.js animateScenes() handles 3D rendering at 60fps separately)
+  setInterval(() => {
+    if (simNeedsRender) {
+      simNeedsRender = false;
+      renderActiveTabVisuals();
+    }
+  }, 250);
 }
 
 // ----------------------------------------------------
@@ -1942,6 +2009,352 @@ function refreshUploadedDataUI(stats) {
   updateReplWriteNodeOptions();
   updateScaleInfo();
 }
+
+// ----------------------------------------------------
+// HOVER FLASHCARD TOOLTIP SYSTEM
+// ----------------------------------------------------
+const flashcardEl = (() => {
+  const el = document.createElement('div');
+  el.className = 'dbms-flashcard';
+  el.id = 'dbms-flashcard-tooltip';
+  document.body.appendChild(el);
+  return el;
+})();
+
+let flashcardHideTimer = null;
+
+function showFlashcard(x, y, html, variant = '') {
+  flashcardEl.className = `dbms-flashcard ${variant}`;
+  flashcardEl.innerHTML = html;
+  
+  // Position with bounds checking
+  const pad = 16;
+  const maxW = 360;
+  const maxH = 400;
+  let left = x + pad;
+  let top = y + pad;
+  
+  if (left + maxW > window.innerWidth) left = x - maxW - pad;
+  if (top + maxH > window.innerHeight) top = Math.max(pad, window.innerHeight - maxH - pad);
+  if (left < pad) left = pad;
+  if (top < pad) top = pad;
+  
+  flashcardEl.style.left = left + 'px';
+  flashcardEl.style.top = top + 'px';
+  
+  clearTimeout(flashcardHideTimer);
+  requestAnimationFrame(() => flashcardEl.classList.add('visible'));
+}
+
+function hideFlashcard() {
+  flashcardHideTimer = setTimeout(() => {
+    flashcardEl.classList.remove('visible');
+  }, 120);
+}
+
+function getStatusClass(status) {
+  if (!status) return '';
+  const s = String(status).toLowerCase();
+  if (s === 'active' || s === 'online') return 'fc-status-active';
+  if (s === 'offline' || s === 'suspended') return 'fc-status-offline';
+  if (s === 'syncing') return 'fc-status-syncing';
+  return '';
+}
+
+function buildRecordRows(record) {
+  if (!record || typeof record !== 'object') return '';
+  return Object.entries(record).map(([key, val]) => {
+    const statusClass = (key === 'status' || key === 'role') ? getStatusClass(val) : '';
+    const displayVal = val === null || val === undefined ? '-' : String(val);
+    return `<div class="dbms-flashcard-row">
+      <span class="fc-label">${key}</span>
+      <span class="fc-value ${statusClass}">${displayVal}</span>
+    </div>`;
+  }).join('');
+}
+
+// --- B+ TREE FLASHCARD ---
+// B+ tree hover is handled via custom 'btree-hover' events dispatched from three-scenes.js raycasting
+
+// --- SHARD NODE FLASHCARD ---
+function initShardFlashcards() {
+  if (!shardsNodesWrapper) return;
+  
+  shardsNodesWrapper.addEventListener('mouseover', (e) => {
+    const card = e.target.closest('.shard-node-card');
+    if (!card) return;
+    
+    const cardIndex = Array.from(shardsNodesWrapper.children).indexOf(card);
+    const shardIds = Object.keys(sharding.shards);
+    const shardId = shardIds[cardIndex];
+    if (!shardId) return;
+    
+    const shard = sharding.shards[shardId];
+    if (!shard) return;
+    
+    const metrics = sharding.getMetrics();
+    const shardMetrics = metrics[shardId];
+    
+    // Build records table preview
+    let recordsHtml = '';
+    if (shard.records && shard.records.length > 0) {
+      const previewRecords = shard.records.slice(0, 8);
+      const cols = Object.keys(previewRecords[0]);
+      recordsHtml = `
+        <div class="dbms-flashcard-records-preview">
+          <table>
+            <thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+            <tbody>${previewRecords.map(r => `<tr>${cols.map(c => `<td>${r[c] !== null && r[c] !== undefined ? r[c] : '-'}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table>
+          ${shard.records.length > 8 ? `<div style="text-align:center; color:#57606a; font-size:0.55rem; margin-top:4px;">+${shard.records.length - 8} more records</div>` : ''}
+        </div>`;
+    }
+    
+    const html = `
+      <div class="dbms-flashcard-header">
+        <span class="flashcard-icon">🗄️</span>
+        <div>
+          <div class="flashcard-title">${shardId}</div>
+          <div class="flashcard-subtitle">${shard.name}</div>
+        </div>
+      </div>
+      <div class="dbms-flashcard-body">
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Strategy</span>
+          <span class="fc-value fc-accent-cyan">${sharding.strategy}</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Records</span>
+          <span class="fc-value fc-accent-cyan">${shardMetrics.count}</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Load</span>
+          <span class="fc-value">${shardMetrics.percentage}%</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Key Range</span>
+          <span class="fc-value">[${shardMetrics.keys.slice(0, 5).join(', ')}${shardMetrics.keys.length > 5 ? '...' : ''}]</span>
+        </div>
+        ${recordsHtml}
+      </div>
+      <div class="dbms-flashcard-footer">Shard Node // Database File Records</div>
+    `;
+    
+    showFlashcard(e.clientX, e.clientY, html, 'flashcard-shard');
+  });
+  
+  shardsNodesWrapper.addEventListener('mouseout', (e) => {
+    const card = e.target.closest('.shard-node-card');
+    if (card && !card.contains(e.relatedTarget)) {
+      hideFlashcard();
+    }
+    if (!card) hideFlashcard();
+  });
+  
+  shardsNodesWrapper.addEventListener('mousemove', (e) => {
+    if (flashcardEl.classList.contains('visible')) {
+      const pad = 16;
+      const maxW = 360;
+      let left = e.clientX + pad;
+      let top = e.clientY + pad;
+      if (left + maxW > window.innerWidth) left = e.clientX - maxW - pad;
+      if (top + 300 > window.innerHeight) top = Math.max(pad, window.innerHeight - 300 - pad);
+      flashcardEl.style.left = left + 'px';
+      flashcardEl.style.top = top + 'px';
+    }
+  });
+}
+
+// --- REPLICATION NODE FLASHCARD ---
+function initReplicationFlashcards() {
+  if (!replNodeToggles) return;
+  
+  replNodeToggles.addEventListener('mouseover', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    
+    // Find which node this button relates to
+    const btnIndex = Array.from(replNodeToggles.children).indexOf(btn);
+    // Map button to node (promote buttons are interleaved, so filter by content)
+    const btnText = btn.textContent || '';
+    const matchedNode = replication.nodes.find(n => btnText.includes(n.name));
+    if (!matchedNode) return;
+    
+    const nodeData = matchedNode.data;
+    const recordCount = nodeData ? Object.keys(nodeData).length : 0;
+    
+    // Build a preview of records stored on this node
+    let recordsHtml = '';
+    if (nodeData && recordCount > 0) {
+      const previewEntries = Object.values(nodeData).slice(0, 6);
+      const cols = Object.keys(previewEntries[0]);
+      recordsHtml = `
+        <div class="dbms-flashcard-records-preview">
+          <table>
+            <thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+            <tbody>${previewEntries.map(r => `<tr>${cols.map(c => {
+              const v = r[c] !== null && r[c] !== undefined ? r[c] : '-';
+              return `<td>${v}</td>`;
+            }).join('')}</tr>`).join('')}</tbody>
+          </table>
+          ${recordCount > 6 ? `<div style="text-align:center; color:#57606a; font-size:0.55rem; margin-top:4px;">+${recordCount - 6} more records</div>` : ''}
+        </div>`;
+    }
+    
+    const isMaster = matchedNode.role === 'master';
+    const isPrimary = matchedNode.role === 'primary';
+    const roleIcon = isMaster ? '👑' : (isPrimary ? '🔷' : '📖');
+    
+    const html = `
+      <div class="dbms-flashcard-header">
+        <span class="flashcard-icon">${roleIcon}</span>
+        <div>
+          <div class="flashcard-title">${matchedNode.name}</div>
+          <div class="flashcard-subtitle">${matchedNode.id} // ${matchedNode.region}</div>
+        </div>
+      </div>
+      <div class="dbms-flashcard-body">
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Role</span>
+          <span class="fc-value ${isMaster ? 'fc-status-active' : 'fc-accent-cyan'}">${matchedNode.role.toUpperCase()}</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Status</span>
+          <span class="fc-value ${getStatusClass(matchedNode.status)}">${matchedNode.status}</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">WAL Position</span>
+          <span class="fc-value fc-accent-cyan">LSN ${matchedNode.walPosition}</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Writes</span>
+          <span class="fc-value">${matchedNode.writeCount}</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Reads</span>
+          <span class="fc-value">${matchedNode.readCount}</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Conflicts</span>
+          <span class="fc-value ${matchedNode.conflictCount > 0 ? 'fc-status-offline' : ''}">${matchedNode.conflictCount}</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Records</span>
+          <span class="fc-value fc-accent-cyan">${recordCount}</span>
+        </div>
+        ${recordsHtml}
+      </div>
+      <div class="dbms-flashcard-footer">Replica Node // Database File Records</div>
+    `;
+    
+    showFlashcard(e.clientX, e.clientY, html, 'flashcard-replication');
+  });
+  
+  replNodeToggles.addEventListener('mouseout', (e) => {
+    const btn = e.target.closest('button');
+    if (btn && !btn.contains(e.relatedTarget)) {
+      hideFlashcard();
+    }
+    if (!btn) hideFlashcard();
+  });
+}
+
+// --- B+ TREE NODE FLASHCARD (on 3D canvas hover) ---
+function initBTreeCanvasFlashcard() {
+  if (!btree3d) return;
+  
+  let lastHoveredKeys = null;
+  
+  btree3d.addEventListener('mousemove', (e) => {
+    // Use a simple approach: find which node's key range the mouse is near
+    // by checking the btree structure and matching to viewport position
+    // We dispatch a custom event from three-scenes.js for btree hover
+  });
+  
+  // Listen for custom btree-hover events dispatched from three-scenes.js
+  btree3d.addEventListener('btree-hover', (e) => {
+    const { node } = e.detail;
+    if (!node) {
+      hideFlashcard();
+      lastHoveredKeys = null;
+      return;
+    }
+    
+    const keysStr = node.keys.join(',');
+    if (keysStr === lastHoveredKeys) return;
+    lastHoveredKeys = keysStr;
+    
+    // Build flashcard showing the record data for each key in this node
+    let recordsHtml = '';
+    if (node.isLeaf && node.children) {
+      // In leaf nodes, children are the values (records)
+      const records = node.children.filter(v => v && typeof v === 'object');
+      if (records.length > 0) {
+        const cols = Object.keys(records[0]);
+        const previewRecords = records.slice(0, 6);
+        recordsHtml = `
+          <div class="dbms-flashcard-records-preview">
+            <table>
+              <thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+              <tbody>${previewRecords.map(r => `<tr>${cols.map(c => {
+                const v = r[c] !== null && r[c] !== undefined ? r[c] : '-';
+                return `<td>${v}</td>`;
+              }).join('')}</tr>`).join('')}</tbody>
+            </table>
+            ${records.length > 6 ? `<div style="text-align:center; color:#57606a; font-size:0.55rem; margin-top:4px;">+${records.length - 6} more</div>` : ''}
+          </div>`;
+      }
+    }
+    
+    const html = `
+      <div class="dbms-flashcard-header">
+        <span class="flashcard-icon">${node.isLeaf ? '🍃' : '🌲'}</span>
+        <div>
+          <div class="flashcard-title">${node.isLeaf ? 'Leaf Node' : 'Internal Node'}</div>
+          <div class="flashcard-subtitle">${node.id}</div>
+        </div>
+      </div>
+      <div class="dbms-flashcard-body">
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Type</span>
+          <span class="fc-value ${node.isLeaf ? 'fc-accent-magenta' : 'fc-accent-cyan'}">${node.isLeaf ? 'LEAF' : 'INTERNAL'}</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Keys</span>
+          <span class="fc-value fc-accent-cyan">[${node.keys.join(', ')}]</span>
+        </div>
+        <div class="dbms-flashcard-row">
+          <span class="fc-label">Key Count</span>
+          <span class="fc-value">${node.keys.length}</span>
+        </div>
+        ${node.isLeaf ? `<div class="dbms-flashcard-row">
+          <span class="fc-label">Has Next</span>
+          <span class="fc-value">${node.next ? 'Yes →' : 'No (tail)'}</span>
+        </div>` : `<div class="dbms-flashcard-row">
+          <span class="fc-label">Children</span>
+          <span class="fc-value">${node.children ? node.children.length : 0}</span>
+        </div>`}
+        ${recordsHtml}
+      </div>
+      <div class="dbms-flashcard-footer">B+ Tree Index // Database Records</div>
+    `;
+    
+    const rect = btree3d.getBoundingClientRect();
+    const mouseX = e.detail.mouseX || (rect.left + rect.width / 2);
+    const mouseY = e.detail.mouseY || (rect.top + rect.height / 2);
+    showFlashcard(mouseX, mouseY, html, 'flashcard-btree');
+  });
+  
+  btree3d.addEventListener('mouseleave', () => {
+    hideFlashcard();
+    lastHoveredKeys = null;
+  });
+}
+
+// Initialize all flashcard systems
+initShardFlashcards();
+initReplicationFlashcards();
+initBTreeCanvasFlashcard();
 
 // ----------------------------------------------------
 // INITIALIZATION KICKSTART

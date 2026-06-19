@@ -1619,3 +1619,199 @@ select:focus {
     font-size: 0.65rem;
   }
 }
+
+/* ----------------------------------------------------
+   HOVER FLASHCARD TOOLTIP
+   ---------------------------------------------------- */
+.dbms-flashcard {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  min-width: 260px;
+  max-width: 360px;
+  background: rgba(10, 14, 26, 0.96);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(0, 242, 254, 0.35);
+  border-radius: 10px;
+  padding: 0;
+  box-shadow:
+    0 0 20px rgba(0, 242, 254, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.dbms-flashcard.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.dbms-flashcard-header {
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.08), rgba(138, 43, 226, 0.06));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dbms-flashcard-header .flashcard-icon {
+  font-size: 1rem;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(0, 242, 254, 0.1);
+  border: 1px solid rgba(0, 242, 254, 0.2);
+}
+
+.dbms-flashcard-header .flashcard-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+  color: #00f2fe;
+  text-transform: uppercase;
+}
+
+.dbms-flashcard-header .flashcard-subtitle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  color: #8b949e;
+}
+
+.dbms-flashcard-body {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dbms-flashcard-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.dbms-flashcard-row:last-child {
+  border-bottom: none;
+}
+
+.dbms-flashcard-row .fc-label {
+  color: #57606a;
+  text-transform: uppercase;
+  font-size: 0.6rem;
+  letter-spacing: 0.5px;
+}
+
+.dbms-flashcard-row .fc-value {
+  color: #f0f6fc;
+  font-weight: 500;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dbms-flashcard-row .fc-value.fc-status-active {
+  color: #39ff14;
+}
+
+.dbms-flashcard-row .fc-value.fc-status-offline {
+  color: #ff003c;
+}
+
+.dbms-flashcard-row .fc-value.fc-status-suspended {
+  color: #ff9f1c;
+}
+
+.dbms-flashcard-row .fc-value.fc-status-syncing {
+  color: #00f2fe;
+}
+
+.dbms-flashcard-row .fc-value.fc-accent-cyan {
+  color: #00f2fe;
+}
+
+.dbms-flashcard-row .fc-value.fc-accent-magenta {
+  color: #ff007f;
+}
+
+.dbms-flashcard-row .fc-value.fc-accent-purple {
+  color: #8a2be2;
+}
+
+.dbms-flashcard-footer {
+  padding: 6px 14px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.55rem;
+  color: #57606a;
+  text-align: center;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* Flashcard variants */
+.dbms-flashcard.flashcard-btree .dbms-flashcard-header {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.1), rgba(255, 0, 127, 0.06));
+}
+
+.dbms-flashcard.flashcard-shard .dbms-flashcard-header {
+  background: linear-gradient(135deg, rgba(138, 43, 226, 0.1), rgba(0, 242, 254, 0.06));
+}
+
+.dbms-flashcard.flashcard-shard .flashcard-title {
+  color: #8a2be2;
+}
+
+.dbms-flashcard.flashcard-replication .dbms-flashcard-header {
+  background: linear-gradient(135deg, rgba(57, 255, 20, 0.08), rgba(31, 142, 237, 0.06));
+}
+
+.dbms-flashcard.flashcard-replication .flashcard-title {
+  color: #39ff14;
+}
+
+.dbms-flashcard-records-preview {
+  max-height: 120px;
+  overflow-y: auto;
+  margin-top: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.dbms-flashcard-records-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+}
+
+.dbms-flashcard-records-preview th {
+  color: #57606a;
+  text-align: left;
+  padding: 2px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  text-transform: uppercase;
+  font-size: 0.55rem;
+  font-weight: 600;
+}
+
+.dbms-flashcard-records-preview td {
+  color: #8b949e;
+  padding: 2px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}

@@ -39,7 +39,15 @@ export class ShardingRouter {
         seedData.push({ id, name });
       });
     } else {
-      seedData = [];
+      // Default sample data so shards are non-empty on startup
+      seedData = [
+        { id: 5, name: 'Alice' }, { id: 12, name: 'Bob' }, { id: 18, name: 'Carol' },
+        { id: 25, name: 'Dave' }, { id: 31, name: 'Eve' },
+        { id: 38, name: 'Frank' }, { id: 42, name: 'Grace' }, { id: 55, name: 'Hank' },
+        { id: 49, name: 'Ivy' }, { id: 60, name: 'Jack' },
+        { id: 70, name: 'Karen' }, { id: 78, name: 'Leo' }, { id: 85, name: 'Mona' },
+        { id: 92, name: 'Nate' }, { id: 99, name: 'Olivia' }
+      ];
     }
 
     for (const item of seedData) {
@@ -76,7 +84,7 @@ export class ShardingRouter {
     return { target, steps };
   }
 
-  insert(key, value) {
+  insert(key, value, fullRecord = null) {
     const { target, steps } = this.getRoute(key);
     let autoSharded = false;
     const rebalanceLogs = [];
@@ -84,9 +92,11 @@ export class ShardingRouter {
     // Check duplicates
     if (!this.shards[target].keys.includes(key)) {
       this.shards[target].keys.push(key);
-      this.shards[target].records.push({ id: key, name: value });
+      // Store full record if available, otherwise fallback to { id, name }
+      const record = fullRecord ? { ...fullRecord } : { id: key, name: value };
+      this.shards[target].records.push(record);
       this.shards[target].keys.sort((a, b) => a - b);
-      this.shards[target].records.sort((a, b) => a.id - b.id);
+      this.shards[target].records.sort((a, b) => (a.id || 0) - (b.id || 0));
     }
 
     // Auto-sharding: trigger split if target shard exceeds 8 keys

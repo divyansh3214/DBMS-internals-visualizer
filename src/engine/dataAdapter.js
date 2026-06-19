@@ -328,23 +328,22 @@ export class DataAdapter {
       if (isNaN(key)) {
         key = (idx + 1) * 10; // synthetic key
       }
-      btree.insert(key, `val_${key}`);
+      btree.insert(key, row);
     });
 
     // 3. Re-seed Sharding
-    // We shard using the keyCol or primary numeric ID
-    sharding.shards.Shard_A.keys = [];
-    shardsClear(sharding);
+    // Reset shards fully (clears data, boundaries, and any auto-created shards)
+    sharding.seed();
     
     const shardSeedData = primaryRows.map((row, idx) => {
       let id = parseInt(row[keyCol], 10);
       if (isNaN(id)) id = (idx + 1) * 10;
       const nameCol = primaryCols.find(c => c !== keyCol && typeof row[c] === 'string') || primaryCols[0];
-      return { id, name: String(row[nameCol] || `rec_${id}`) };
+      return { id, name: String(row[nameCol] || `rec_${id}`), fullRow: row };
     });
 
     shardSeedData.forEach(item => {
-      sharding.insert(item.id, item.name);
+      sharding.insert(item.id, item.name, item.fullRow);
     });
 
     // 4. Re-seed CQRS
